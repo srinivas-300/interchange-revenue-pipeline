@@ -72,14 +72,17 @@ create stage if not exists interchange_raw.sim.landing
     comment = 'Internal stage for simulator output files';
 
 -- ---------------------------------------------------------------------------
--- Service user for dbt + Airflow (local dev)
+-- Service user for dbt + Airflow.
+-- TYPE = SERVICE => exempt from the account MFA policy; authenticates with a
+-- key pair only (no password). Attach the public key after generating it
+-- locally, e.g.:
+--   alter user svc_interchange set rsa_public_key = 'MIIBIjANBgkqh...';
 -- ---------------------------------------------------------------------------
 create user if not exists svc_interchange
-    password = 'REPLACE_WITH_A_STRONG_PASSWORD'
+    type = service
     default_role = interchange_role
     default_warehouse = transform_wh
     default_namespace = interchange_analytics
-    must_change_password = false
     comment = 'Local dev service account (dbt + Airflow)';
 
 grant role interchange_role to user svc_interchange;

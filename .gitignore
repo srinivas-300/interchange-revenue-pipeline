@@ -18,6 +18,7 @@ airflow.db
 **/.astro/manifest.slim.json
 
 # project-specific
+.secrets/
 .venv/
 venv/
 __pycache__/
