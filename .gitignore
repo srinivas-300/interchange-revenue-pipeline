@@ -16,3 +16,12 @@ airflow.db
 
 **/.astro/dbt_metadata.json
 **/.astro/manifest.slim.json
+
+# project-specific
+.venv/
+venv/
+__pycache__/
+include/dbt/**/target/
+include/dbt/**/dbt_packages/
+include/dbt/**/logs/
+data/landing/
