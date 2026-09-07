@@ -1,0 +1,10 @@
+# Astro Runtime includes the following pre-installed providers packages: https://www.astronomer.io/docs/astro/runtime-image-architecture#provider-packages
+# project-specific
+.venv/
+venv/
+__pycache__/
+include/dbt/**/target/
+include/dbt/**/dbt_packages/
+include/dbt/**/logs/
+*.duckdb
+data/landing/
