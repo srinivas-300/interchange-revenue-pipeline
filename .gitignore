@@ -18,6 +18,8 @@ airflow.db
 **/.astro/manifest.slim.json
 
 # project-specific
+worklog.md
+docs/
 .secrets/
 .venv/
 venv/
