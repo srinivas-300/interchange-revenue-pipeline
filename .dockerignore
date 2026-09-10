@@ -6,3 +6,9 @@ logs/
 .venv
 airflow.db
 airflow.cfg
+
+# local-only: keys and generated data are mounted at runtime, never baked into the image
+.secrets
+data
+docs
+worklog.md

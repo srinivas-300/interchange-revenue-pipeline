@@ -1,0 +1,8 @@
+# Local-only mounts for `astro dev`. Tasks run inside the scheduler container.
+# The key and the generated landing data stay on the host (see .dockerignore)
+# and are mounted read-only instead of being baked into the image.
+services:
+  scheduler:
+    volumes:
+      - ./.secrets:/usr/local/airflow/.secrets:ro
+      - ./data:/usr/local/airflow/data:ro
