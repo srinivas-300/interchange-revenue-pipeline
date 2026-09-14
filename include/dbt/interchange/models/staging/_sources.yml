@@ -1,0 +1,33 @@
+version: 2
+
+sources:
+  - name: sim
+    description: >
+      Raw simulator feeds loaded by ingest_raw into INTERCHANGE_RAW.SIM.
+      Append-only: duplicate rows and re-sent files are kept.
+    database: interchange_raw
+    schema: sim
+    config:
+      # _loaded_at was stamped in the account time zone (America/Los_Angeles);
+      # dbt freshness expects UTC, so convert before comparing.
+      loaded_at_field: "convert_timezone('America/Los_Angeles', 'UTC', _loaded_at)"
+      freshness:
+        warn_after: {count: 24, period: hour}
+        error_after: {count: 72, period: hour}
+    tables:
+      - name: card_events
+        description: Card lifecycle events (authorization, clearing, settlement, refund, dispute), one row per event per load, about 1% duplicates.
+      - name: companies
+        description: Company master, full snapshot per load.
+      - name: cards
+        description: Card master, full snapshot per load.
+      - name: merchants
+        description: Merchant master with raw card descriptors, full snapshot per load.
+      - name: interchange_rates
+        description: Effective-dated interchange bps by MCC, card program and region.
+      - name: rewards_rates
+        description: Effective-dated cashback percentage by spend category.
+      - name: fx_rates
+        description: Daily USD rate per currency.
+      - name: network_settlement
+        description: Daily bank settlement totals in USD, used for reconciliation.
