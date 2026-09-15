@@ -1,0 +1,155 @@
+version: 2
+
+models:
+  - name: stg_interchange_rates
+    description: Interchange bps by MCC, card program and region, effective from valid_from (inclusive) to valid_to (exclusive).
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [mcc, card_program, region, valid_from]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "valid_to is null or valid_to > valid_from"
+    columns:
+      - name: mcc
+        data_type: varchar
+        data_tests: [not_null]
+      - name: card_program
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [VISA_COMMERCIAL_STANDARD, VISA_COMMERCIAL_PREMIUM]
+      - name: region
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [NA, EU, APAC]
+      - name: bps
+        data_type: number(6,1)
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 1000
+      - name: valid_from
+        data_type: date
+        data_tests: [not_null]
+      - name: valid_to
+        data_type: date
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz
+      - name: _batch_id
+        data_type: varchar
+      - name: _source_file
+        data_type: varchar
+
+  - name: stg_rewards_rates
+    description: Cashback share by spend category, effective from valid_from (inclusive) to valid_to (exclusive).
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [spend_category, valid_from]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "valid_to is null or valid_to > valid_from"
+    columns:
+      - name: spend_category
+        data_type: varchar
+        data_tests: [not_null]
+      - name: cashback_pct
+        data_type: number(6,4)
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 0.05
+      - name: valid_from
+        data_type: date
+        data_tests: [not_null]
+      - name: valid_to
+        data_type: date
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz
+      - name: _batch_id
+        data_type: varchar
+      - name: _source_file
+        data_type: varchar
+
+  - name: stg_fx_rates
+    description: One USD rate per currency per day.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [currency, rate_date]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "currency <> 'USD' or usd_rate = 1"
+    columns:
+      - name: currency
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [USD, EUR, GBP, INR]
+      - name: rate_date
+        data_type: date
+        data_tests: [not_null]
+      - name: usd_rate
+        data_type: number(12,6)
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                strictly: true
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz
+      - name: _batch_id
+        data_type: varchar
+      - name: _source_file
+        data_type: varchar
+
+  - name: stg_network_settlement
+    description: The bank's daily settlement file, one row per settlement day. Reconciliation compares internal numbers against this.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: settlement_date
+        data_type: date
+        data_tests: [unique, not_null]
+      - name: file_id
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: total_settled_amount_usd
+        data_type: number(18,2)
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+      - name: total_txn_count
+        data_type: number(38,0)
+        data_tests: [not_null]
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz
+      - name: _batch_id
+        data_type: varchar
+      - name: _source_file
+        data_type: varchar
