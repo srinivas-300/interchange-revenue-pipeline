@@ -1,0 +1,32 @@
+version: 2
+
+snapshots:
+  - name: snap_interchange_rates
+    description: Every version of each interchange rate row the warehouse has seen (SCD2).
+    relation: ref('stg_interchange_rates')
+    config:
+      unique_key: [mcc, card_program, region, valid_from]
+      strategy: check
+      check_cols: [bps, valid_to]
+      hard_deletes: invalidate
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [mcc, card_program, region, valid_from]
+          config:
+            where: "dbt_valid_to is null"
+
+  - name: snap_rewards_rates
+    description: Every version of each rewards rate row the warehouse has seen (SCD2).
+    relation: ref('stg_rewards_rates')
+    config:
+      unique_key: [spend_category, valid_from]
+      strategy: check
+      check_cols: [cashback_pct, valid_to]
+      hard_deletes: invalidate
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [spend_category, valid_from]
+          config:
+            where: "dbt_valid_to is null"
