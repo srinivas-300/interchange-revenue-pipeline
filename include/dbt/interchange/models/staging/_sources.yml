@@ -2,9 +2,7 @@ version: 2
 
 sources:
   - name: sim
-    description: >
-      Raw simulator feeds loaded by ingest_raw into INTERCHANGE_RAW.SIM.
-      Append-only: duplicate rows and re-sent files are kept.
+    description: '{{ doc("sim_raw_feeds") }}'
     database: interchange_raw
     schema: sim
     config:
