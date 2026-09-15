@@ -1,0 +1,96 @@
+version: 2
+
+models:
+  - name: stg_companies
+    description: One current row per company (latest load wins).
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: company_id
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: company_name
+        data_type: varchar
+        data_tests: [not_null]
+      - name: region
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [NA, EU, APAC]
+      - name: onboarded_at
+        data_type: timestamp_ntz
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz
+      - name: _batch_id
+        data_type: varchar
+      - name: _source_file
+        data_type: varchar
+
+  - name: stg_cards
+    description: One current row per card (latest load wins).
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: card_id
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: company_id
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_companies')
+                field: company_id
+      - name: card_program
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [VISA_COMMERCIAL_STANDARD, VISA_COMMERCIAL_PREMIUM]
+      - name: issued_at
+        data_type: timestamp_ntz
+      - name: status
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [active]
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz
+      - name: _batch_id
+        data_type: varchar
+      - name: _source_file
+        data_type: varchar
+
+  - name: stg_merchants
+    description: One current row per merchant (latest load wins). descriptor is the raw, messy card-network text.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: merchant_id
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: merchant_name
+        data_type: varchar
+      - name: mcc
+        data_type: varchar
+        data_tests: [not_null]
+      - name: merchant_country
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [US, GB, DE, IN]
+      - name: descriptor
+        data_type: varchar
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz
+      - name: _batch_id
+        data_type: varchar
+      - name: _source_file
+        data_type: varchar

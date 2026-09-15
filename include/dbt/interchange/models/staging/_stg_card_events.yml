@@ -20,10 +20,20 @@ models:
         data_tests: [not_null]
       - name: card_id
         data_type: varchar
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_cards')
+                field: card_id
       - name: merchant_id
         data_type: varchar
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_merchants')
+                field: merchant_id
       - name: mcc
         data_type: varchar
       - name: event_type
