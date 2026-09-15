@@ -1,0 +1,65 @@
+version: 2
+
+models:
+  - name: stg_card_events
+    description: >
+      One row per card lifecycle event, deduplicated from raw card_events
+      (latest load wins). Typed, currency upper-cased, load time in UTC.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: event_id
+        data_type: varchar
+        description: Event key, unique after dedupe.
+        data_tests:
+          - unique
+          - not_null
+      - name: transaction_id
+        data_type: varchar
+        data_tests: [not_null]
+      - name: card_id
+        data_type: varchar
+        data_tests: [not_null]
+      - name: merchant_id
+        data_type: varchar
+        data_tests: [not_null]
+      - name: mcc
+        data_type: varchar
+      - name: event_type
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [authorization, auth_reversal, clearing, settlement, refund, dispute]
+      - name: event_ts
+        data_type: timestamp_ntz
+        data_tests: [not_null]
+      - name: event_date
+        data_type: date
+      - name: ingested_at
+        data_type: timestamp_ntz
+      - name: amount
+        data_type: number(18,2)
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+      - name: currency
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [USD, EUR, GBP, INR]
+      - name: original_transaction_id
+        data_type: varchar
+        description: Set only on refunds that carry the link; null otherwise.
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz
+      - name: _batch_id
+        data_type: varchar
+      - name: _source_file
+        data_type: varchar
