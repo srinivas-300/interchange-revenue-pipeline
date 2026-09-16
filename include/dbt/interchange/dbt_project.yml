@@ -15,6 +15,10 @@ clean-targets: ["target", "dbt_packages"]
 
 require-dbt-version: [">=1.9.0", "<2.0.0"]
 
+vars:
+  # An authorization with no clearing after this many days is treated as expired.
+  auth_expiry_days: 7
+
 models:
   interchange:
     staging:

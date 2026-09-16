@@ -1,0 +1,85 @@
+version: 2
+
+models:
+  - name: int_transaction_lifecycle
+    description: >
+      One row per transaction, built by collapsing its authorization, reversal,
+      clearing, settlement and dispute events. Refunds are excluded and handled in
+      int_refund_matching.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "settled_amount is null or settled_at is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "settled_amount is null or settled_amount <= authorized_amount + 0.02"
+    columns:
+      - name: transaction_id
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: card_id
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_cards')
+                field: card_id
+      - name: merchant_id
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_merchants')
+                field: merchant_id
+      - name: mcc
+        data_type: varchar
+        data_tests: [not_null]
+      - name: currency
+        data_type: varchar
+        data_tests: [not_null]
+      - name: status
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [authorized, reversed, expired, cleared, settled]
+      - name: authorized_at
+        data_type: timestamp_ntz
+        data_tests: [not_null]
+      - name: authorized_amount
+        data_type: number(18,2)
+        data_tests: [not_null]
+      - name: reversed_amount
+        data_type: number(18,2)
+      - name: reversed_at
+        data_type: timestamp_ntz
+      - name: clearing_count
+        data_type: number(18,0)
+      - name: cleared_amount
+        data_type: number(18,2)
+      - name: cleared_at
+        data_type: timestamp_ntz
+      - name: settled_amount
+        data_type: number(18,2)
+      - name: settled_at
+        data_type: timestamp_ntz
+      - name: settlement_date
+        data_type: date
+      - name: disputed_at
+        data_type: timestamp_ntz
+      - name: is_disputed
+        data_type: boolean
+      - name: event_count
+        data_type: number(18,0)
+      - name: first_event_ts
+        data_type: timestamp_ntz
+      - name: last_event_ts
+        data_type: timestamp_ntz
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz
