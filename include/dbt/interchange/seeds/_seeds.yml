@@ -1,0 +1,32 @@
+version: 2
+
+seeds:
+  - name: mcc_categories
+    description: >
+      Maps a merchant category code to the spend category used by the rewards
+      rate table. Card events carry an MCC (5812), while stg_rewards_rates is
+      keyed by category (restaurants), so the cashback lookup needs this bridge.
+      Maintained by hand: it is small, slow-changing reference data that no
+      source system sends us.
+    config:
+      column_types:
+        # Without this, dbt would infer mcc as a number and the join against the
+        # varchar mcc on card events would fail.
+        mcc: varchar(4)
+        spend_category: varchar
+        mcc_description: varchar
+    columns:
+      - name: mcc
+        description: Merchant category code, as it appears on card events.
+        data_tests: [unique, not_null]
+      - name: spend_category
+        description: Category key used by stg_rewards_rates.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_rewards_rates')
+                field: spend_category
+      - name: mcc_description
+        description: Human-readable description of the MCC.
+        data_tests: [not_null]
