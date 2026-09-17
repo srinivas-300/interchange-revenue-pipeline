@@ -1,0 +1,32 @@
+version: 2
+
+seeds:
+  - name: settlement_break_resolutions
+    description: >
+      Human sign-off for reconciliation breaks: one row per break day someone has
+      investigated and explained. An automated cause in
+      fct_settlement_break_attribution says where to look; a row here says someone
+      looked. Cutoff-timing breaks clear themselves and need no row. Empty while the
+      data reconciles cleanly.
+    config:
+      column_types:
+        settlement_date: date
+        resolution_note: varchar
+        resolved_by: varchar
+        resolved_on: date
+    columns:
+      - name: settlement_date
+        data_tests:
+          - unique
+          - not_null
+          # Signing off a day that is not a break is a mistake, not a harmless extra.
+          - relationships:
+              arguments:
+                to: ref('fct_settlement_break_attribution')
+                field: settlement_date
+      - name: resolution_note
+        data_tests: [not_null]
+      - name: resolved_by
+        data_tests: [not_null]
+      - name: resolved_on
+        data_tests: [not_null]

@@ -1,0 +1,89 @@
+version: 2
+
+models:
+  - name: fct_close_readiness
+    description: >
+      One row per month saying whether it can be closed. Ready means the bank has
+      reported the month's last day and every reconciliation break is explained:
+      self-clearing cutoff timing, or signed off in settlement_break_resolutions.
+      close_blocked_reason names what is stopping a month that is not ready. The
+      control tests fail the build if a closed month was not ready.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              break_days = self_clearing_break_days + resolved_break_days + unexplained_break_days
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_ready_to_close = (close_blocked_reason is null)"
+    columns:
+      - name: period_month
+        data_type: date
+        data_tests: [unique, not_null]
+      - name: is_closed
+        data_type: boolean
+        data_tests: [not_null]
+      - name: closed_on
+        data_type: date
+      - name: has_month_end_bank_file
+        description: The bank has reported the month's last day, so no more settlements can land in it.
+        data_type: boolean
+        data_tests: [not_null]
+      - name: break_days
+        data_type: number(18,0)
+        data_tests: [not_null]
+      - name: self_clearing_break_days
+        data_type: number(18,0)
+        data_tests: [not_null]
+      - name: resolved_break_days
+        data_type: number(18,0)
+        data_tests: [not_null]
+      - name: unexplained_break_days
+        data_type: number(18,0)
+        data_tests: [not_null]
+      - name: is_ready_to_close
+        data_type: boolean
+        data_tests: [not_null]
+      - name: close_blocked_reason
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [month_end_bank_file_missing, unexplained_breaks]
+
+unit_tests:
+  - name: close_readiness_blocks_on_gaps
+    description: >
+      January has only explained breaks (a cutoff pair and a signed-off day) and is
+      ready. February has one unexplained break. March is missing its month-end bank
+      file, so settlements could still arrive for it.
+    model: fct_close_readiness
+    given:
+      - input: ref('fct_monthly_revenue')
+        rows:
+          - {period_month: 2024-01-01, is_closed: true,  closed_on: 2024-02-05}
+          - {period_month: 2024-02-01, is_closed: false, closed_on: null}
+          - {period_month: 2024-03-01, is_closed: false, closed_on: null}
+      - input: ref('fct_settlement_reconciliation')
+        rows:
+          - {settlement_date: 2024-01-31, has_bank_file: true}
+          - {settlement_date: 2024-02-29, has_bank_file: true}
+          - {settlement_date: 2024-03-30, has_bank_file: true}
+          - {settlement_date: 2024-03-31, has_bank_file: false}
+      - input: ref('fct_settlement_break_attribution')
+        rows:
+          - {settlement_date: 2024-01-10, is_self_clearing: true}
+          - {settlement_date: 2024-01-11, is_self_clearing: true}
+          - {settlement_date: 2024-01-15, is_self_clearing: false}
+          - {settlement_date: 2024-02-07, is_self_clearing: false}
+      - input: ref('settlement_break_resolutions')
+        rows:
+          - {settlement_date: 2024-01-15, resolution_note: reloaded missing partition, resolved_by: finance, resolved_on: 2024-02-02}
+    expect:
+      rows:
+        - {period_month: 2024-01-01, break_days: 3, self_clearing_break_days: 2, resolved_break_days: 1, unexplained_break_days: 0, is_ready_to_close: true,  close_blocked_reason: null}
+        - {period_month: 2024-02-01, break_days: 1, self_clearing_break_days: 0, resolved_break_days: 0, unexplained_break_days: 1, is_ready_to_close: false, close_blocked_reason: unexplained_breaks}
+        - {period_month: 2024-03-01, break_days: 0, self_clearing_break_days: 0, resolved_break_days: 0, unexplained_break_days: 0, is_ready_to_close: false, close_blocked_reason: month_end_bank_file_missing}
