@@ -1,0 +1,88 @@
+version: 2
+
+models:
+  - name: agg_daily_interchange_revenue
+    description: >
+      One row per day per company, zero-filled from dim_date x dim_company so quiet
+      days appear as zero rather than disappearing. Settlement revenue lands on the
+      settlement date and refund reversals on the refund date, per the
+      fct_refund_reversals policy. net_interchange_after_refunds_usd is the daily
+      revenue line. Money is kept at full precision because this table is summed
+      again (across companies, across days); round when presenting, not storing.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date_day, company_key]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              net_interchange_after_refunds_usd
+              = net_interchange_usd - net_interchange_reversed_usd
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "unmatched_refund_count <= refund_count and disputed_txn_count <= settled_txn_count"
+    columns:
+      - name: date_day
+        data_type: date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: company_key
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_company')
+                field: company_key
+      - name: settled_txn_count
+        data_type: number(18,0)
+        data_tests: [not_null]
+      - name: disputed_txn_count
+        data_type: number(18,0)
+        data_tests: [not_null]
+      - name: settled_amount_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: gross_interchange_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: network_fee_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: rewards_accrued_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: net_interchange_usd
+        description: Net interchange recognised at settlement on this day, before refunds.
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: refund_count
+        data_type: number(18,0)
+        data_tests: [not_null]
+      - name: unmatched_refund_count
+        description: Refunds on this day with no purchase to reverse; nothing was clawed back for these.
+        data_type: number(18,0)
+        data_tests: [not_null]
+      - name: refund_amount_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: gross_interchange_reversed_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: rewards_reversed_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: net_interchange_reversed_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: net_interchange_after_refunds_usd
+        description: The daily revenue line.
+        data_type: number(18,6)
+        data_tests: [not_null]
