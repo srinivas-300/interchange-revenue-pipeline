@@ -1,0 +1,121 @@
+version: 2
+
+models:
+  - name: fct_refund_reversals
+    description: >
+      One row per refund event with the interchange it takes back. Policy: the
+      reversal is recognised on the refund date and closed periods are never
+      restated; the clawback is proportional to the original booking (refund amount
+      over settled amount, applied to the gross interchange and rewards booked at the
+      original rates and FX rate); network fees are not reversed; a purchase can
+      never give back more than it earned, so reversals are capped per purchase;
+      unmatched refunds are kept with null reversal amounts.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('int_refund_matching')
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_matched = (reversal_ratio is not null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "reversal_ratio is null or reversal_ratio between 0 and 1"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              net_interchange_reversed_usd is null
+              or net_interchange_reversed_usd
+                 = gross_interchange_reversed_usd - rewards_reversed_usd
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "original_settlement_date is null or refund_date >= original_settlement_date"
+    columns:
+      - name: event_id
+        description: Grain of the model - the refund event.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: matched_transaction_id
+        description: The purchase reversed; null when the refund could not be matched.
+        data_type: varchar
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('fct_interchange_revenue')
+                field: transaction_id
+      - name: card_key
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_card')
+                field: card_key
+      - name: company_key
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_company')
+                field: company_key
+      - name: merchant_key
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_merchant')
+                field: merchant_key
+      - name: refund_date
+        description: The date the reversal is recognised.
+        data_type: date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: refund_ts
+        data_type: timestamp_ntz
+        data_tests: [not_null]
+      - name: original_settlement_date
+        data_type: date
+      - name: is_prior_period_purchase
+        description: The refund lands in a later month than the purchase it reverses.
+        data_type: boolean
+      - name: is_matched
+        data_type: boolean
+        data_tests: [not_null]
+      - name: match_method
+        data_type: varchar
+        data_tests: [not_null]
+      - name: match_confidence
+        data_type: varchar
+        data_tests: [not_null]
+      - name: currency
+        data_type: varchar
+        data_tests: [not_null]
+      - name: refund_amount
+        description: In the purchase's own currency.
+        data_type: number(18,2)
+        data_tests: [not_null]
+      - name: refund_amount_usd
+        description: Converted at the original purchase's FX rate.
+        data_type: number(18,6)
+      - name: reversal_ratio
+        description: Share of the original booking reversed by this refund, after the per-purchase cap.
+        data_type: number(18,10)
+      - name: is_capped
+        description: The refund asked for more than the purchase had left to give back.
+        data_type: boolean
+        data_tests: [not_null]
+      - name: gross_interchange_reversed_usd
+        data_type: number(18,6)
+      - name: rewards_reversed_usd
+        data_type: number(18,6)
+      - name: net_interchange_reversed_usd
+        description: How much net interchange this refund removes. Network fees are not reversed.
+        data_type: number(18,6)
