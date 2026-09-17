@@ -36,6 +36,12 @@ vars:
   date_spine_start: "2024-01-01"
   date_spine_end: "2024-04-01"
 
+  # How far our daily settled USD may differ from the bank's before the day is a
+  # break. Both sides sum at full precision and round once, so a clean day differs
+  # by 0.00; one cent absorbs a rounding boundary landing differently, nothing more.
+  # Transaction counts have no tolerance: any count difference is a break.
+  recon_amount_tolerance_usd: 0.01
+
 models:
   interchange:
     staging:

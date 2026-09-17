@@ -1,0 +1,120 @@
+version: 2
+
+models:
+  - name: fct_settlement_reconciliation
+    description: >
+      One row per day comparing our settled ledger (fct_interchange_revenue, summed at
+      full precision and rounded once) with the bank's settlement file
+      (stg_network_settlement). Days come from dim_date plus any day the bank
+      reports, so a day missing on either side is visible. recon_status is
+      no_activity, matched, within_tolerance (amount within the
+      recon_amount_tolerance_usd var), missing_bank_file, missing_in_ledger or break.
+      Transaction counts have no tolerance.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              is_break = (recon_status in ('break', 'missing_bank_file', 'missing_in_ledger'))
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "has_bank_file = (bank_file_id is not null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              not has_bank_file
+              or settled_amount_diff_usd = our_settled_amount_usd - bank_settled_amount_usd
+    columns:
+      - name: settlement_date
+        description: Grain of the model.
+        data_type: date
+        data_tests: [unique, not_null]
+      - name: bank_file_id
+        data_type: varchar
+      - name: has_bank_file
+        data_type: boolean
+        data_tests: [not_null]
+      - name: our_txn_count
+        data_type: number(18,0)
+        data_tests: [not_null]
+      - name: bank_txn_count
+        data_type: number(18,0)
+      - name: txn_count_diff
+        description: Ours minus bank. Null when there is no bank file.
+        data_type: number(18,0)
+      - name: our_settled_amount_usd
+        description: Sum of the day's settled USD at full precision, rounded once to cents.
+        data_type: number(18,2)
+        data_tests: [not_null]
+      - name: bank_settled_amount_usd
+        data_type: number(18,2)
+      - name: settled_amount_diff_usd
+        description: Ours minus bank. Null when there is no bank file.
+        data_type: number(18,2)
+      - name: recon_status
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [no_activity, matched, within_tolerance, missing_bank_file, missing_in_ledger, break]
+      - name: is_break
+        description: True for break, missing_bank_file and missing_in_ledger.
+        data_type: boolean
+        data_tests: [not_null]
+
+unit_tests:
+  # The real data reconciles perfectly, so it cannot prove the model catches a
+  # break. This feeds the logic one small, made-up day per outcome instead, without
+  # touching the ledger or the bank file.
+  - name: recon_classifies_every_outcome
+    description: One fixture day per status, including a bank day outside the date spine.
+    model: fct_settlement_reconciliation
+    overrides:
+      vars:
+        recon_amount_tolerance_usd: 0.01
+    given:
+      - input: ref('dim_date')
+        rows:
+          - {date_day: 2024-01-01}
+          - {date_day: 2024-01-02}
+          - {date_day: 2024-01-03}
+          - {date_day: 2024-01-04}
+          - {date_day: 2024-01-05}
+          - {date_day: 2024-01-06}
+          - {date_day: 2024-01-07}
+      - input: ref('fct_interchange_revenue')
+        rows:
+          # 01-01: no transactions, no bank file
+          # 01-02: two transactions, bank agrees exactly
+          - {transaction_id: T1, settlement_date: 2024-01-02, settled_amount_usd: 60.000000}
+          - {transaction_id: T2, settlement_date: 2024-01-02, settled_amount_usd: 40.000000}
+          # 01-03: rounds to 50.00, bank says 50.01 - one cent, inside tolerance
+          - {transaction_id: T3, settlement_date: 2024-01-03, settled_amount_usd: 50.004000}
+          # 01-04: counts agree, amount is 2.00 off
+          - {transaction_id: T4, settlement_date: 2024-01-04, settled_amount_usd: 10.000000}
+          # 01-05: amounts agree, bank counts one more transaction
+          - {transaction_id: T5, settlement_date: 2024-01-05, settled_amount_usd: 10.000000}
+          # 01-06: we settled, the bank sent no file
+          - {transaction_id: T6, settlement_date: 2024-01-06, settled_amount_usd: 5.000000}
+          # 01-07 and 01-08: bank only
+      - input: ref('stg_network_settlement')
+        rows:
+          - {settlement_date: 2024-01-02, file_id: NET-20240102, total_settled_amount_usd: 100.00, total_txn_count: 2}
+          - {settlement_date: 2024-01-03, file_id: NET-20240103, total_settled_amount_usd: 50.01,  total_txn_count: 1}
+          - {settlement_date: 2024-01-04, file_id: NET-20240104, total_settled_amount_usd: 12.00,  total_txn_count: 1}
+          - {settlement_date: 2024-01-05, file_id: NET-20240105, total_settled_amount_usd: 10.00,  total_txn_count: 2}
+          - {settlement_date: 2024-01-07, file_id: NET-20240107, total_settled_amount_usd: 7.00,   total_txn_count: 1}
+          - {settlement_date: 2024-01-08, file_id: NET-20240108, total_settled_amount_usd: 8.00,   total_txn_count: 1}
+    expect:
+      rows:
+        - {settlement_date: 2024-01-01, recon_status: no_activity,       is_break: false}
+        - {settlement_date: 2024-01-02, recon_status: matched,           is_break: false}
+        - {settlement_date: 2024-01-03, recon_status: within_tolerance,  is_break: false}
+        - {settlement_date: 2024-01-04, recon_status: break,             is_break: true}
+        - {settlement_date: 2024-01-05, recon_status: break,             is_break: true}
+        - {settlement_date: 2024-01-06, recon_status: missing_bank_file, is_break: true}
+        - {settlement_date: 2024-01-07, recon_status: missing_in_ledger, is_break: true}
+        - {settlement_date: 2024-01-08, recon_status: missing_in_ledger, is_break: true}
