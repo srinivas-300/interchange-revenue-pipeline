@@ -1,0 +1,76 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: >
+      One row per calendar day between the date_spine_start and date_spine_end vars
+      (end exclusive). Reports join to this so days with no activity still appear
+      with zero rather than vanishing. Week numbering is ISO (Monday = 1), computed
+      explicitly so it does not depend on the session's WEEK_START setting.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_weekend = (day_of_week_iso in (6, 7))"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "dayofweekiso(week_start_date) = 1 and week_start_date <= date_day"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "date_day between month_start_date and month_end_date"
+    columns:
+      - name: date_day
+        description: Grain of the model.
+        data_type: date
+        data_tests:
+          - unique
+          - not_null
+          # The whole point of a spine: no missing days.
+          - dbt_utils.sequential_values:
+              arguments:
+                interval: 1
+                datepart: day
+      - name: day_of_week_iso
+        description: 1 = Monday ... 7 = Sunday.
+        data_type: number(4,0)
+        data_tests: [not_null]
+      - name: day_name
+        data_type: varchar
+        data_tests: [not_null]
+      - name: is_weekend
+        data_type: boolean
+        data_tests: [not_null]
+      - name: week_start_date
+        description: The Monday of the ISO week.
+        data_type: date
+        data_tests: [not_null]
+      - name: iso_week_of_year
+        data_type: number(4,0)
+        data_tests: [not_null]
+      - name: month_of_year
+        data_type: number(4,0)
+        data_tests: [not_null]
+      - name: month_name
+        data_type: varchar
+        data_tests: [not_null]
+      - name: month_start_date
+        data_type: date
+        data_tests: [not_null]
+      - name: month_end_date
+        data_type: date
+        data_tests: [not_null]
+      - name: is_month_end
+        description: True on the last day of the month, when the close runs.
+        data_type: boolean
+        data_tests: [not_null]
+      - name: quarter_of_year
+        data_type: number(4,0)
+        data_tests: [not_null]
+      - name: quarter_start_date
+        data_type: date
+        data_tests: [not_null]
+      - name: year_number
+        data_type: number(4,0)
+        data_tests: [not_null]

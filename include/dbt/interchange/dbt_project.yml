@@ -30,6 +30,12 @@ vars:
   # to the quirks of the data that generated it does not survive real data.
   refund_match_window_days: 45
 
+  # Bounds of dim_date. The end is exclusive, so 2024-04-01 means the last day in
+  # the dimension is 2024-03-31. Widen these when the simulated window grows; the
+  # coverage test fails if activity ever lands outside them.
+  date_spine_start: "2024-01-01"
+  date_spine_end: "2024-04-01"
+
 models:
   interchange:
     staging:
