@@ -42,6 +42,12 @@ vars:
   # Transaction counts have no tolerance: any count difference is a break.
   recon_amount_tolerance_usd: 0.01
 
+  # A transaction that lands on the next bank day shows as two opposite breaks on
+  # adjacent days. The counts cancel exactly; the amounts only nearly, because each
+  # side converts at its own day's FX rate. This is how far apart they may be, as a
+  # share of the break amount, and still count as the same moved money.
+  recon_cutoff_amount_tolerance_pct: 0.01
+
 models:
   interchange:
     staging:

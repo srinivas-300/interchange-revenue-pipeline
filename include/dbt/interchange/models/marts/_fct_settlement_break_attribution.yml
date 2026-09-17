@@ -1,0 +1,106 @@
+version: 2
+
+models:
+  - name: fct_settlement_break_attribution
+    description: >
+      One row per reconciliation break with its most likely cause, diagnosed from the
+      reconciliation numbers alone. cutoff_timing is a pair of opposite breaks on
+      adjacent days (a transaction settled on different days by us and the bank); it
+      clears itself. Other causes are missing_bank_file, ledger_day_missing,
+      ledger_missing_transactions, ledger_extra_transactions and amount_mismatch. A
+      cause is a starting point for investigation, not a sign-off.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_self_clearing = (break_cause = 'cutoff_timing')"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_self_clearing = (offsetting_settlement_date is not null)"
+    columns:
+      - name: settlement_date
+        description: Grain of the model - one row per break day.
+        data_type: date
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_settlement_reconciliation')
+                field: settlement_date
+      - name: recon_status
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [break, missing_bank_file, missing_in_ledger]
+      - name: txn_count_diff
+        description: Ours minus bank.
+        data_type: number(18,0)
+      - name: settled_amount_diff_usd
+        description: Ours minus bank.
+        data_type: number(18,2)
+      - name: offsetting_settlement_date
+        description: For cutoff_timing, the adjacent day whose break cancels this one.
+        data_type: date
+      - name: break_cause
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - missing_bank_file
+                  - ledger_day_missing
+                  - cutoff_timing
+                  - ledger_missing_transactions
+                  - ledger_extra_transactions
+                  - amount_mismatch
+      - name: is_self_clearing
+        data_type: boolean
+        data_tests: [not_null]
+
+unit_tests:
+  # Real data has no breaks, so every cause is proven on fixture days instead.
+  - name: break_attribution_assigns_every_cause
+    description: One fixture per cause, plus a near-miss pair that must not count as timing.
+    model: fct_settlement_break_attribution
+    overrides:
+      vars:
+        recon_amount_tolerance_usd: 0.01
+        recon_cutoff_amount_tolerance_pct: 0.01
+    given:
+      - input: ref('fct_settlement_reconciliation')
+        rows:
+          # a matched day is not a break and must not appear
+          - {settlement_date: 2024-01-02, is_break: false, recon_status: matched, txn_count_diff: 0, settled_amount_diff_usd: 0.00}
+          # cutoff pair: counts cancel, amounts cancel within 1% (FX differs by day)
+          - {settlement_date: 2024-01-03, is_break: true, recon_status: break, txn_count_diff: 1, settled_amount_diff_usd: 10.00}
+          - {settlement_date: 2024-01-04, is_break: true, recon_status: break, txn_count_diff: -1, settled_amount_diff_usd: -10.05}
+          # bank has transactions we do not
+          - {settlement_date: 2024-01-06, is_break: true, recon_status: break, txn_count_diff: -2, settled_amount_diff_usd: -30.00}
+          # we have a transaction the bank does not, and the next day is clean
+          - {settlement_date: 2024-01-08, is_break: true, recon_status: break, txn_count_diff: 1, settled_amount_diff_usd: 5.00}
+          - {settlement_date: 2024-01-09, is_break: false, recon_status: matched, txn_count_diff: 0, settled_amount_diff_usd: 0.00}
+          # same transactions, different money
+          - {settlement_date: 2024-01-10, is_break: true, recon_status: break, txn_count_diff: 0, settled_amount_diff_usd: 2.00}
+          # whole-day gaps
+          - {settlement_date: 2024-01-12, is_break: true, recon_status: missing_bank_file, txn_count_diff: null, settled_amount_diff_usd: null}
+          - {settlement_date: 2024-01-14, is_break: true, recon_status: missing_in_ledger, txn_count_diff: -40, settled_amount_diff_usd: -900.00}
+          # near miss: counts cancel but amounts are 6.00 apart - two separate problems, not timing
+          - {settlement_date: 2024-01-16, is_break: true, recon_status: break, txn_count_diff: 1, settled_amount_diff_usd: 10.00}
+          - {settlement_date: 2024-01-17, is_break: true, recon_status: break, txn_count_diff: -1, settled_amount_diff_usd: -4.00}
+    expect:
+      rows:
+        - {settlement_date: 2024-01-03, break_cause: cutoff_timing,               is_self_clearing: true,  offsetting_settlement_date: 2024-01-04}
+        - {settlement_date: 2024-01-04, break_cause: cutoff_timing,               is_self_clearing: true,  offsetting_settlement_date: 2024-01-03}
+        - {settlement_date: 2024-01-06, break_cause: ledger_missing_transactions, is_self_clearing: false, offsetting_settlement_date: null}
+        - {settlement_date: 2024-01-08, break_cause: ledger_extra_transactions,   is_self_clearing: false, offsetting_settlement_date: null}
+        - {settlement_date: 2024-01-10, break_cause: amount_mismatch,             is_self_clearing: false, offsetting_settlement_date: null}
+        - {settlement_date: 2024-01-12, break_cause: missing_bank_file,           is_self_clearing: false, offsetting_settlement_date: null}
+        - {settlement_date: 2024-01-14, break_cause: ledger_day_missing,          is_self_clearing: false, offsetting_settlement_date: null}
+        - {settlement_date: 2024-01-16, break_cause: ledger_extra_transactions,   is_self_clearing: false, offsetting_settlement_date: null}
+        - {settlement_date: 2024-01-17, break_cause: ledger_missing_transactions, is_self_clearing: false, offsetting_settlement_date: null}
