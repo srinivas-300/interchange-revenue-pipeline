@@ -1,0 +1,108 @@
+version: 2
+
+models:
+  - name: fct_interchange_revenue
+    description: >
+      One row per settled transaction with the interchange it earned at settlement:
+      gross, network fee, rewards and net, in USD. Joins to dim_card, dim_company and
+      dim_merchant on surrogate keys and to dim_date on settlement_date. Carries the
+      rating inputs (region, card_program, spend_category, bps, cashback_pct,
+      usd_rate) as they were at rating time, because the dimensions are current
+      state only. Money is kept at full precision; round after summing, never
+      before. Refunds are recorded separately in fct_refund_reversals.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('int_txn_rated')
+    columns:
+      - name: transaction_id
+        description: Grain of the model. Kept as a degenerate dimension for traceability.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: card_key
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_card')
+                field: card_key
+      - name: company_key
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_company')
+                field: company_key
+      - name: merchant_key
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_merchant')
+                field: merchant_key
+      - name: settlement_date
+        data_type: date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: settled_at
+        data_type: timestamp_ntz
+        data_tests: [not_null]
+      - name: mcc
+        data_type: varchar
+        data_tests: [not_null]
+      - name: spend_category
+        description: From the transaction's own MCC, the one that was rated - not from dim_merchant.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: card_program
+        description: As rated.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: region
+        description: As rated. dim_company holds the current region, which could differ.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: currency
+        data_type: varchar
+        data_tests: [not_null]
+      - name: bps
+        data_type: number(6,1)
+        data_tests: [not_null]
+      - name: cashback_pct
+        data_type: number(6,4)
+        data_tests: [not_null]
+      - name: usd_rate
+        data_type: number(12,6)
+        data_tests: [not_null]
+      - name: is_disputed
+        data_type: boolean
+        data_tests: [not_null]
+      - name: settled_amount
+        description: In the transaction's own currency.
+        data_type: number(18,2)
+        data_tests: [not_null]
+      - name: settled_amount_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: gross_interchange_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: network_fee_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: rewards_accrued_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: net_interchange_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
