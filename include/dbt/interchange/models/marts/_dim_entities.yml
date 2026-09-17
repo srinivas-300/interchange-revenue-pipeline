@@ -1,0 +1,139 @@
+version: 2
+
+models:
+  - name: dim_company
+    description: >
+      One row per company, current state (type 1). region drives the interchange
+      rate; this model keeps today's value only, which is safe while the source
+      never changes a company but would need a snapshot on real data.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      # Nothing may be dropped or duplicated on the way from staging.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_companies')
+    columns:
+      - name: company_key
+        description: >
+          Hashed surrogate key. Facts join on this, not company_id, so that a
+          future move to history tracking (several rows per company) does not
+          break every join.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: company_id
+        description: Natural key from the source.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: company_name
+        data_type: varchar
+        data_tests: [not_null]
+      - name: region
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [NA, EU, APAC]
+      - name: onboarded_at
+        data_type: timestamp_ntz
+      - name: onboarded_date
+        data_type: date
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz
+
+  - name: dim_merchant
+    description: >
+      One row per merchant, current state (type 1), with its MCC resolved to a
+      spend category and description through the mcc_categories seed.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_merchants')
+    columns:
+      - name: merchant_key
+        description: Hashed surrogate key; facts join on this.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: merchant_id
+        description: Natural key from the source.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: merchant_name
+        data_type: varchar
+      - name: descriptor
+        description: Raw card-network statement text.
+        data_type: varchar
+      - name: merchant_country
+        data_type: varchar
+        data_tests: [not_null]
+      - name: mcc
+        data_type: varchar
+        data_tests: [not_null]
+      - name: mcc_description
+        data_type: varchar
+        data_tests: [not_null]
+      - name: spend_category
+        description: NULL would mean the merchant's MCC is missing from the seed.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz
+
+  - name: dim_card
+    description: >
+      One row per card, current state (type 1). Carries company_key so cards roll
+      up to companies through the dimensions.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_cards')
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_premium = (card_program = 'VISA_COMMERCIAL_PREMIUM')"
+    columns:
+      - name: card_key
+        description: Hashed surrogate key; facts join on this.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: card_id
+        description: Natural key from the source.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: company_key
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_company')
+                field: company_key
+      - name: company_id
+        data_type: varchar
+        data_tests: [not_null]
+      - name: card_program
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [VISA_COMMERCIAL_STANDARD, VISA_COMMERCIAL_PREMIUM]
+      - name: is_premium
+        data_type: boolean
+        data_tests: [not_null]
+      - name: status
+        data_type: varchar
+        data_tests: [not_null]
+      - name: issued_at
+        data_type: timestamp_ntz
+      - name: issued_date
+        data_type: date
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz
