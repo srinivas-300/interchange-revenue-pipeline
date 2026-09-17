@@ -1,0 +1,91 @@
+version: 2
+
+models:
+  - name: int_refund_matching
+    description: >
+      One row per refund event, matched back to the purchase it reverses. Refunds
+      carrying original_transaction_id are linked directly; the rest are inferred
+      from card, merchant, currency, amount and timing within the
+      refund_match_window_days var. Unmatched refunds are kept rather than dropped:
+      the unmatched queue is a finance deliverable, not a failure. The model does
+      not read the refund event's own transaction_id, which in this simulator holds
+      the original transaction and is therefore the ground truth the matcher is
+      graded against - see tests/assert_refund_match_precision.sql.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_matched = (matched_transaction_id is not null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              matched_settled_amount is null
+              or refund_amount <= matched_settled_amount
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              days_since_settlement is null
+              or days_since_settlement between 0 and {{ var('refund_match_window_days') }}
+    columns:
+      - name: event_id
+        description: Grain of the model - the refund event, not the transaction.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: card_id
+        data_type: varchar
+        data_tests: [not_null]
+      - name: merchant_id
+        data_type: varchar
+        data_tests: [not_null]
+      - name: currency
+        data_type: varchar
+        data_tests: [not_null]
+      - name: refund_amount
+        data_type: number(18,2)
+        data_tests: [not_null]
+      - name: refund_ts
+        data_type: timestamp_ntz
+        data_tests: [not_null]
+      - name: matched_transaction_id
+        description: The purchase this refund reverses; null when nothing matched.
+        data_type: varchar
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('int_transaction_lifecycle')
+                field: transaction_id
+      - name: is_matched
+        data_type: boolean
+        data_tests: [not_null]
+      - name: match_method
+        description: How the link was established.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [original_link, heuristic, none]
+      - name: match_confidence
+        description: >
+          What a reviewer sorts the queue on. exact_link needs no review; high and
+          medium are a unique or amount-exact candidate; low means several purchases
+          fit and the pick is a guess.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [exact_link, high, medium, low, unmatched]
+      - name: candidate_count
+        description: How many purchases fitted. Kept even when 1, because ambiguity is the signal.
+        data_type: number(18,0)
+      - name: matched_settled_amount
+        data_type: number(18,2)
+      - name: matched_settled_at
+        data_type: timestamp_ntz
+      - name: days_since_settlement
+        data_type: number(18,0)
+      - name: _loaded_at_utc
+        data_type: timestamp_ntz

@@ -25,6 +25,11 @@ vars:
   network_fee_bps: 10
   network_fee_fixed_usd: 0.02
 
+  # How long after settlement a refund may still be matched to its purchase.
+  # Deliberately wider than the lag the simulator actually uses: a matcher tuned
+  # to the quirks of the data that generated it does not survive real data.
+  refund_match_window_days: 45
+
 models:
   interchange:
     staging:
