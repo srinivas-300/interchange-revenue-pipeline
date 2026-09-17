@@ -1,0 +1,129 @@
+version: 2
+
+models:
+  - name: fct_monthly_revenue
+    description: >
+      One row per month: the revenue figures the close signs off (rolled up from
+      agg_daily_interchange_revenue at full precision) and the month's close status
+      from the close_calendar seed. snap_monthly_revenue keeps every version.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_closed = (closed_on is not null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              net_interchange_after_refunds_usd
+              = net_interchange_usd - net_interchange_reversed_usd
+    columns:
+      - name: period_month
+        description: First day of the month. Grain of the model.
+        data_type: date
+        data_tests: [unique, not_null]
+      - name: is_closed
+        data_type: boolean
+        data_tests: [not_null]
+      - name: closed_on
+        data_type: date
+      - name: closed_by
+        data_type: varchar
+      - name: settled_txn_count
+        data_type: number(18,0)
+        data_tests: [not_null]
+      - name: settled_amount_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: gross_interchange_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: network_fee_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: rewards_accrued_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: net_interchange_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: refund_count
+        data_type: number(18,0)
+        data_tests: [not_null]
+      - name: net_interchange_reversed_usd
+        data_type: number(18,6)
+        data_tests: [not_null]
+      - name: net_interchange_after_refunds_usd
+        description: The month's revenue line.
+        data_type: number(18,6)
+        data_tests: [not_null]
+
+  - name: fct_month_end_close
+    description: >
+      One row per closed month: the figures it was signed off at (the first version
+      snap_monthly_revenue recorded with the month closed), today's figures, the
+      change in net interchange after refunds, and is_restated when any signed-off
+      figure has moved. Versions from while a month was open are ignored.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: period_month
+        data_type: date
+        data_tests: [unique, not_null]
+      - name: closed_on
+        data_type: date
+        data_tests: [not_null]
+      - name: closed_by
+        data_type: varchar
+        data_tests: [not_null]
+      - name: locked_at
+        description: When the warehouse first recorded the month as closed.
+        data_type: timestamp_ntz
+        # Null would mean a month is marked closed but its sign-off was never
+        # captured, so there is nothing to detect a restatement against.
+        data_tests: [not_null]
+      - name: locked_settled_txn_count
+        data_type: number(18,0)
+      - name: current_settled_txn_count
+        data_type: number(18,0)
+      - name: locked_settled_amount_usd
+        data_type: number(18,6)
+      - name: current_settled_amount_usd
+        data_type: number(18,6)
+      - name: locked_net_interchange_after_refunds_usd
+        data_type: number(18,6)
+      - name: current_net_interchange_after_refunds_usd
+        data_type: number(18,6)
+      - name: restatement_net_interchange_usd
+        description: Current minus signed-off net interchange after refunds.
+        data_type: number(18,6)
+      - name: is_restated
+        data_type: boolean
+        data_tests: [not_null]
+
+unit_tests:
+  - name: month_end_close_detects_restatement
+    description: >
+      January changed while open and was then closed unchanged - not a restatement.
+      February was closed and later moved - a restatement against its first closed
+      version. March is open and must not appear.
+    model: fct_month_end_close
+    given:
+      - input: ref('snap_monthly_revenue')
+        rows:
+          - {period_month: 2024-01-01, is_closed: false, dbt_valid_from: "2024-02-01 00:00:00", settled_txn_count: 10, settled_amount_usd: 1000, gross_interchange_usd: 20, network_fee_usd: 1, rewards_accrued_usd: 9, net_interchange_usd: 10, refund_count: 0, net_interchange_reversed_usd: 0, net_interchange_after_refunds_usd: 10}
+          - {period_month: 2024-01-01, is_closed: true,  dbt_valid_from: "2024-02-05 00:00:00", settled_txn_count: 12, settled_amount_usd: 1200, gross_interchange_usd: 24, network_fee_usd: 1, rewards_accrued_usd: 11, net_interchange_usd: 12, refund_count: 0, net_interchange_reversed_usd: 0, net_interchange_after_refunds_usd: 12}
+          - {period_month: 2024-02-01, is_closed: true,  dbt_valid_from: "2024-03-05 00:00:00", settled_txn_count: 20, settled_amount_usd: 2000, gross_interchange_usd: 40, network_fee_usd: 2, rewards_accrued_usd: 18, net_interchange_usd: 20, refund_count: 1, net_interchange_reversed_usd: 1, net_interchange_after_refunds_usd: 19}
+          - {period_month: 2024-02-01, is_closed: true,  dbt_valid_from: "2024-04-02 00:00:00", settled_txn_count: 21, settled_amount_usd: 2100, gross_interchange_usd: 42, network_fee_usd: 2, rewards_accrued_usd: 19, net_interchange_usd: 21, refund_count: 1, net_interchange_reversed_usd: 1, net_interchange_after_refunds_usd: 20}
+          - {period_month: 2024-03-01, is_closed: false, dbt_valid_from: "2024-04-02 00:00:00", settled_txn_count: 30, settled_amount_usd: 3000, gross_interchange_usd: 60, network_fee_usd: 3, rewards_accrued_usd: 27, net_interchange_usd: 30, refund_count: 2, net_interchange_reversed_usd: 2, net_interchange_after_refunds_usd: 28}
+      - input: ref('fct_monthly_revenue')
+        rows:
+          - {period_month: 2024-01-01, is_closed: true,  closed_on: 2024-02-05, closed_by: finance, settled_txn_count: 12, settled_amount_usd: 1200, gross_interchange_usd: 24, network_fee_usd: 1, rewards_accrued_usd: 11, net_interchange_usd: 12, refund_count: 0, net_interchange_reversed_usd: 0, net_interchange_after_refunds_usd: 12}
+          - {period_month: 2024-02-01, is_closed: true,  closed_on: 2024-03-05, closed_by: finance, settled_txn_count: 21, settled_amount_usd: 2100, gross_interchange_usd: 42, network_fee_usd: 2, rewards_accrued_usd: 19, net_interchange_usd: 21, refund_count: 1, net_interchange_reversed_usd: 1, net_interchange_after_refunds_usd: 20}
+          - {period_month: 2024-03-01, is_closed: false, closed_on: null,       closed_by: null,    settled_txn_count: 30, settled_amount_usd: 3000, gross_interchange_usd: 60, network_fee_usd: 3, rewards_accrued_usd: 27, net_interchange_usd: 30, refund_count: 2, net_interchange_reversed_usd: 2, net_interchange_after_refunds_usd: 28}
+    expect:
+      rows:
+        - {period_month: 2024-01-01, locked_at: "2024-02-05 00:00:00", locked_net_interchange_after_refunds_usd: 12, restatement_net_interchange_usd: 0, is_restated: false}
+        - {period_month: 2024-02-01, locked_at: "2024-03-05 00:00:00", locked_net_interchange_after_refunds_usd: 19, restatement_net_interchange_usd: 1, is_restated: true}

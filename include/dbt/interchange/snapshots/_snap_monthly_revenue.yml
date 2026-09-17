@@ -1,0 +1,33 @@
+version: 2
+
+snapshots:
+  - name: snap_monthly_revenue
+    description: >
+      Every version of each month's revenue figures the warehouse has produced
+      (SCD2). The first version recorded with is_closed = true is the figure the
+      month was signed off at; any later closed version with different figures is a
+      restatement of a closed period. See fct_month_end_close.
+    relation: ref('fct_monthly_revenue')
+    config:
+      unique_key: period_month
+      strategy: check
+      # is_closed is included so the moment a month closes is recorded as its own
+      # version, even when no figure changes that day.
+      check_cols:
+        - is_closed
+        - settled_txn_count
+        - settled_amount_usd
+        - gross_interchange_usd
+        - network_fee_usd
+        - rewards_accrued_usd
+        - net_interchange_usd
+        - refund_count
+        - net_interchange_reversed_usd
+        - net_interchange_after_refunds_usd
+      hard_deletes: invalidate
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [period_month]
+          config:
+            where: "dbt_valid_to is null"

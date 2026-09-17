@@ -1,0 +1,29 @@
+version: 2
+
+seeds:
+  - name: close_calendar
+    description: >
+      Which months finance has closed, when, and by whom. One row per closed month;
+      a month with no row is still open. Maintained by hand as part of the close:
+      adding a row is the act of closing the month in the warehouse.
+    config:
+      column_types:
+        period_month: date
+        closed_on: date
+        closed_by: varchar
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "period_month = date_trunc('month', period_month)"
+      # A month cannot be closed before it has ended.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "closed_on > last_day(period_month, 'month')"
+    columns:
+      - name: period_month
+        description: First day of the closed month.
+        data_tests: [unique, not_null]
+      - name: closed_on
+        data_tests: [not_null]
+      - name: closed_by
+        data_tests: [not_null]
