@@ -19,6 +19,12 @@ vars:
   # An authorization with no clearing after this many days is treated as expired.
   auth_expiry_days: 7
 
+  # No source system sends us network fees, so int_txn_rated models them the way
+  # card networks price: a share of the settled amount plus a fixed charge per
+  # transaction. Assumption, not measured data.
+  network_fee_bps: 10
+  network_fee_fixed_usd: 0.02
+
 models:
   interchange:
     staging:
